@@ -29,10 +29,6 @@
     (memq op '(+ - *))))
 
 ; ----- func ----- ;
-(define build #f)
-
-(define debug #t)
-
 (define test
   (lambda (pass #:catch [catch #f] . cases)
     (for-each 
@@ -44,3 +40,40 @@
           (printf "~a~n" (pretty-format (pass c))))
         (printf "~n"))
       cases)))
+
+(define driver
+  (let ([build-file "build.s"])
+    (lambda (debug-passes build-passes inputs)
+      (for-each 
+        (lambda (input)
+          (printf "~a~n" input)
+          (printf "~a~n" (evalify ((apply pipe debug-passes) input)))
+          (with-output-to-file build-file #:exists 'replace
+            (lambda () ((apply pipe build-passes) input)))
+          (system (format "cc runtime.c ~a && ./a.out" build-file))
+          (printf "~n"))
+        inputs))))
+
+(define evalify
+  (lambda (program)
+    (let ([ns (module->namespace 'racket)])
+      (for-each 
+        (lambda (expr) (eval expr ns))
+       `((define rax (box 0)) (define rbx (box 0)) (define rcx (box 0)) (define rdx (box 0)) 
+         (define rsi (box 0)) (define rdi (box 0)) (define rbp (box 0)) (define rsp (box 0))
+         (define r8  (box 0)) (define r9  (box 0)) (define r10 (box 0)) (define r11 (box 0))
+         (define r12 (box 0)) (define r13 (box 0)) (define r14 (box 0)) 
+         (define r15 (box (lambda () (unbox rax))))
+         (define stack (list->vector (map (lambda (x) (box 0)) (range 25))))
+         (define-syntax locate (syntax-rules () [(_ bind* body ...) (let bind* body ...)]))
+         (define (nop) (void)) (define (true) #t) (define (false) #t)
+         (define (sra x n) (arithmetic-shift x (- n)))
+         (define (logand x y) (bitwise-and x y))
+         (define (logor x y) (bitwise-ior x y))))
+      (eval program ns))))
+
+; ----- helper ----- ;
+(define pipe
+  (lambda fs
+    (lambda (arg)
+      (foldl (lambda (f a) (f a)) arg fs))))
