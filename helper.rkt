@@ -27,7 +27,7 @@
 
 (define var?
   (lambda (x)
-    (or (reg? x) (frame-var? x))))
+    (or (reg? x) (frame-var? x) (disp-opnd? x))))
 
 (define triv?
   (lambda (x)
@@ -93,10 +93,11 @@
       (for-each 
         (lambda (input)
           (printf "~a~n" input)
-          (printf "~a~n" (evalify ((apply pipe debug-passes) input)))
-          (with-output-to-file build-file #:exists 'replace
-            (lambda () ((apply pipe build-passes) input)))
-          (system (format "cc runtime.c ~a && ./a.out" build-file))
+          (with-handlers ([exn:fail? (lambda (exn) (displayln (exn-message exn)))])
+            (printf "~a~n" (evalify ((apply pipe debug-passes) input)))
+            (with-output-to-file build-file #:exists 'replace
+              (lambda () ((apply pipe build-passes) input)))
+            (system (format "cc runtime.c ~a && ./a.out" build-file)))
           (printf "~n"))
         (begin inputs)))))
 
@@ -115,7 +116,11 @@
          (define (nop) (void)) (define (true) #t) (define (false) #t)
          (define (sra x n) (arithmetic-shift x (- n)))
          (define (logand x y) (bitwise-and x y))
-         (define (logor x y) (bitwise-ior x y))))
+         (define (logor x y) (bitwise-ior x y))
+         (define (int64-truncate x)
+           (if (= 1 (bitwise-bit-field x 63 64))
+             (- (bitwise-bit-field (bitwise-not (sub1 x)) 0 64))
+             (bitwise-bit-field x 0 64)))))
       (eval program ns))))
 
 ; ----- struct ----- ;
