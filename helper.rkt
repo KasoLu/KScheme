@@ -17,20 +17,66 @@
     (and (and (integer? x) (exact? x))
          (<= (- (expt 2 63)) x (- (expt 2 63) 1)))))
 
+(define int32~64?
+  (lambda (x)
+    (and (int? x) (not (int32? x)))))
+
 (define reg?
   (lambda (x)
     (memq x '(rax rcx rdx rbx rbp rsi rdi r8 r9 r10 r11 r12 r13 r14 r15))))
 
 (define var?
-  reg?)
+  (lambda (x)
+    (or (reg? x) (frame-var? x) (disp-opnd? x))))
+
+(define triv?
+  (lambda (x)
+    (or (var? x) (int? x) (label? x))))
 
 (define binop?
   (lambda (op)
-    (memq op '(+ - *))))
+    (memq op '(+ - * logand logor sra))))
+
+(define label?
+  (lambda (x)
+    (any->bool (label-match x))))
+
+(define frame-var?
+  (lambda (x)
+    (any->bool (frame-var-match x))))
+
+(struct disp-opnd (reg offset) #:transparent)
+
+; ----- helper ----- ;
+(define frame-var-match
+  (let ([rx #rx"^fv(0|[1-9][0-9]*)$"])
+    (lambda (x)
+      (rx-match rx x))))
+
+(define label-match
+  (let ([rx #rx"^.+?\\$(0|[1-9][0-9]*)$"])
+    (lambda (x)
+      (rx-match rx x))))
+
+(define label->index
+  (lambda (label)
+    (match (label-match label)
+      [`(,_ ,idx)
+        (string->number idx)]
+      [else
+        (begin #f)])))
+
+(define frame-var->index
+  (lambda (fv)
+    (match (frame-var-match fv)
+      [`(,_ ,idx)
+        (string->number idx)]
+      [else
+        (begin #f)])))
 
 ; ----- func ----- ;
 (define test
-  (lambda (pass #:catch [catch #f] . cases)
+  (lambda (pass #:catch [catch #t] . cases)
     (for-each 
       (lambda (c)
         (printf "~a~n" (pretty-format c))
@@ -39,7 +85,7 @@
             (printf "~a~n" (pretty-format (pass c))))
           (printf "~a~n" (pretty-format (pass c))))
         (printf "~n"))
-      cases)))
+      (begin cases))))
 
 (define driver
   (let ([build-file "build.s"])
@@ -47,12 +93,13 @@
       (for-each 
         (lambda (input)
           (printf "~a~n" input)
-          (printf "~a~n" (evalify ((apply pipe debug-passes) input)))
-          (with-output-to-file build-file #:exists 'replace
-            (lambda () ((apply pipe build-passes) input)))
-          (system (format "cc runtime.c ~a && ./a.out" build-file))
+          (with-handlers ([exn:fail? (lambda (exn) (displayln (exn-message exn)))])
+            (printf "~a~n" (evalify ((apply pipe debug-passes) input)))
+            (with-output-to-file build-file #:exists 'replace
+              (lambda () ((apply pipe build-passes) input)))
+            (system (format "cc runtime.c ~a && ./a.out" build-file)))
           (printf "~n"))
-        inputs))))
+        (begin inputs)))))
 
 (define evalify
   (lambda (program)
@@ -69,11 +116,91 @@
          (define (nop) (void)) (define (true) #t) (define (false) #t)
          (define (sra x n) (arithmetic-shift x (- n)))
          (define (logand x y) (bitwise-and x y))
-         (define (logor x y) (bitwise-ior x y))))
+         (define (logor x y) (bitwise-ior x y))
+         (define (int64-truncate x)
+           (if (= 1 (bitwise-bit-field x 63 64))
+             (- (bitwise-bit-field (bitwise-not (sub1 x)) 0 64))
+             (bitwise-bit-field x 0 64)))))
       (eval program ns))))
 
-; ----- helper ----- ;
+; ----- struct ----- ;
+(define hash-env:make
+  (lambda ()
+    (cons (make-hash) (void))))
+
+(define hash-env:search
+  (lambda (env var)
+    (let loop ([env env])
+      (match env
+        [(? void?)
+         (begin #f)]
+        [(cons table prev)
+         (hash-ref table var (lambda () (loop prev)))]))))
+
+(define hash-env:extend
+  (lambda (env pairs)
+    (cons (make-hash pairs) env)))
+
+(define hash-env:modify!
+  (lambda (env var val)
+    (match env
+      [(? void?)
+       (begin #f)]
+      [(cons table prev)
+       (hash-set! table var val)])))
+
+(define list-env:make
+  (lambda () '()))
+
+(define list-env:search
+  (lambda (env var)
+    (let loop ([env env])
+      (match env
+        [(? null?)
+         (begin #f)]
+        [(cons (cons e-var (box b-val)) prev)
+         (if (equal? var e-var)
+           (begin b-val)
+           (loop prev))]))))
+
+(define list-env:extend
+  (lambda (env pairs)
+    (let loop ([pairs pairs])
+      (match pairs
+        [(? null?)
+         (begin env)]
+        [(cons (cons var val) prev)
+         (cons (cons var (box val)) (loop prev))]))))
+
+(define list-env:modify!
+  (lambda (env var val)
+    (let loop ([env env])
+      (match env
+        [(? null?)
+         (begin #f)]
+        [(cons (cons e-var e-val) prev)
+         (if (equal? var e-var)
+           (set-box! e-val val)
+           (loop prev))]))))
+
+; ----- utils ----- ;
 (define pipe
   (lambda fs
     (lambda (arg)
       (foldl (lambda (f a) (f a)) arg fs))))
+
+(define any->bool
+  (lambda (x)
+    (if (not x) #f #t)))
+
+(define rx-match
+  (lambda (rx x)
+    (cond
+      [(symbol? x)
+       (regexp-match rx (symbol->string x))]
+      [else
+       (begin #f)])))
+
+(define sra
+  (lambda (x n) (arithmetic-shift x (- n))))
+
