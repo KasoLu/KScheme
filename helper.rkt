@@ -45,6 +45,8 @@
   (lambda (x)
     (any->bool (frame-var-match x))))
 
+(struct disp-opnd (reg offset) #:transparent)
+
 ; ----- helper ----- ;
 (define frame-var-match
   (let ([rx #rx"^fv(0|[1-9][0-9]*)$"])
@@ -64,6 +66,14 @@
       [else
         (begin #f)])))
 
+(define frame-var->index
+  (lambda (fv)
+    (match (frame-var-match fv)
+      [`(,_ ,idx)
+        (string->number idx)]
+      [else
+        (begin #f)])))
+
 ; ----- func ----- ;
 (define test
   (lambda (pass #:catch [catch #t] . cases)
@@ -75,7 +85,7 @@
             (printf "~a~n" (pretty-format (pass c))))
           (printf "~a~n" (pretty-format (pass c))))
         (printf "~n"))
-      cases)))
+      (begin cases))))
 
 (define driver
   (let ([build-file "build.s"])
@@ -88,7 +98,7 @@
             (lambda () ((apply pipe build-passes) input)))
           (system (format "cc runtime.c ~a && ./a.out" build-file))
           (printf "~n"))
-        inputs))))
+        (begin inputs)))))
 
 (define evalify
   (lambda (program)
@@ -120,8 +130,7 @@
         [(? void?)
          (begin #f)]
         [(cons table prev)
-         (hash-ref table var (lambda () (loop prev)))]
-        ))))
+         (hash-ref table var (lambda () (loop prev)))]))))
 
 (define hash-env:extend
   (lambda (env pairs)
@@ -133,8 +142,7 @@
       [(? void?)
        (begin #f)]
       [(cons table prev)
-       (hash-set! table var val)]
-      )))
+       (hash-set! table var val)])))
 
 (define list-env:make
   (lambda () '()))
@@ -148,8 +156,7 @@
         [(cons (cons e-var (box b-val)) prev)
          (if (equal? var e-var)
            (begin b-val)
-           (loop prev))]
-        ))))
+           (loop prev))]))))
 
 (define list-env:extend
   (lambda (env pairs)
@@ -158,8 +165,7 @@
         [(? null?)
          (begin env)]
         [(cons (cons var val) prev)
-         (cons (cons var (box val)) (loop prev))]
-        ))))
+         (cons (cons var (box val)) (loop prev))]))))
 
 (define list-env:modify!
   (lambda (env var val)
@@ -170,8 +176,7 @@
         [(cons (cons e-var e-val) prev)
          (if (equal? var e-var)
            (set-box! e-val val)
-           (loop prev))]
-        ))))
+           (loop prev))]))))
 
 ; ----- utils ----- ;
 (define pipe
@@ -186,8 +191,10 @@
 (define rx-match
   (lambda (rx x)
     (cond
-      [(symbol? x) (regexp-match rx (symbol->string x))]
-      [else #f])))
+      [(symbol? x)
+       (regexp-match rx (symbol->string x))]
+      [else
+       (begin #f)])))
 
 (define sra
   (lambda (x n) (arithmetic-shift x (- n))))
