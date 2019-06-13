@@ -57,7 +57,9 @@
           (verify-triv triv)
           (when (or (label? triv) (int32~64? triv))
             (unless (reg? var)
-              (error 'verify-effect "'~a' must be a reg" var)))]
+              (error 'verify-effect "'~a' must be a reg" var)))
+          (when (and (frame-var? var) (frame-var? triv))
+            (error 'verify-effect "'~a' and '~a' cannot be samed with frame-var" var triv))]
         [else
           (error 'verify-effect "'~a' isn't a effect" effect)]))))
 
