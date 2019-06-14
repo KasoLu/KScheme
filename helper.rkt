@@ -86,14 +86,14 @@
 
 ; ----- func ----- ;
 (define test
-  (lambda (pass #:catch [catch #t] . cases)
+  (lambda (pass #:trace [trace #f] . cases)
     (for-each 
       (lambda (c)
         (printf "~a~n" (pretty-format c))
-        (if catch 
+        (if trace
+          (printf "~a~n" (pretty-format (pass c)))
           (with-handlers ([exn:fail? (lambda (exn) (displayln (exn-message exn)))])
-            (printf "~a~n" (pretty-format (pass c))))
-          (printf "~a~n" (pretty-format (pass c))))
+            (printf "~a~n" (pretty-format (pass c)))))
         (printf "~n"))
       (begin cases))))
 
@@ -148,7 +148,7 @@
          (hash-ref table var (lambda () (loop prev)))]))))
 
 (define hash-env:extend
-  (lambda (env pairs)
+  (lambda (env [pairs '()])
     (cons (make-hash pairs) env)))
 
 (define hash-env:modify!
@@ -174,7 +174,7 @@
            (loop prev))]))))
 
 (define list-env:extend
-  (lambda (env pairs)
+  (lambda (env [pairs '()])
     (let loop ([pairs pairs])
       (match pairs
         [(? null?)
@@ -192,6 +192,17 @@
          (if (equal? var e-var)
            (set-box! e-val val)
            (loop prev))]))))
+
+(define list-env:map
+  (lambda (env #:reverse [rev #f] func)
+    (let loop ([env env] [res* '()])
+      (match env
+        [(? null?)
+         (if (not rev)
+           (reverse res*)
+           (begin res*))]
+        [(cons (cons e-var (box e-val)) prev)
+         (loop prev (cons (func e-var e-val) res*))]))))
 
 ; ----- utils ----- ;
 (define pipe
