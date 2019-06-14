@@ -25,9 +25,13 @@
   (lambda (x)
     (memq x '(rax rcx rdx rbx rbp rsi rdi r8 r9 r10 r11 r12 r13 r14 r15))))
 
+(define loc?
+  (lambda (x)
+    (or (reg? x) (fvar? x))))
+
 (define var?
   (lambda (x)
-    (or (reg? x) (frame-var? x) (disp-opnd? x))))
+    (or (uvar? x) (loc? x))))
 
 (define triv?
   (lambda (x)
@@ -37,42 +41,48 @@
   (lambda (op)
     (memq op '(+ - * logand logor sra))))
 
+(define relop?
+  (lambda (op)
+    (memq op '(= > < >= <=))))
+
 (define label?
   (lambda (x)
     (any->bool (label-match x))))
 
-(define frame-var?
+(define fvar?
   (lambda (x)
-    (any->bool (frame-var-match x))))
+    (or (any->bool (fvar-match x)) (disp-opnd? x))))
+
+(define uvar?
+  (lambda (x)
+    (any->bool (uvar-match x))))
 
 (struct disp-opnd (reg offset) #:transparent)
 
 ; ----- helper ----- ;
-(define frame-var-match
-  (let ([rx #rx"^fv(0|[1-9][0-9]*)$"])
-    (lambda (x)
-      (rx-match rx x))))
-
 (define label-match
-  (let ([rx #rx"^.+?\\$(0|[1-9][0-9]*)$"])
-    (lambda (x)
-      (rx-match rx x))))
+  (lambda (x)
+    (rx-match #rx"^.+?\\$(0|[1-9][0-9]*)$" x)))
+
+(define fvar-match
+  (lambda (x)
+    (rx-match #rx"^fv(0|[1-9][0-9]*)$" x)))
+
+(define uvar-match
+  (lambda (x)
+    (rx-match #rx"^.+?\\.(0|[1-9][0-9]*)$" x)))
 
 (define label->index
-  (lambda (label)
-    (match (label-match label)
-      [`(,_ ,idx)
-        (string->number idx)]
-      [else
-        (begin #f)])))
+  (lambda (x)
+    (x->index label-match x)))
 
-(define frame-var->index
-  (lambda (fv)
-    (match (frame-var-match fv)
-      [`(,_ ,idx)
-        (string->number idx)]
-      [else
-        (begin #f)])))
+(define fvar->index
+  (lambda (x)
+    (x->index fvar-match x)))
+
+(define uvar->index
+  (lambda (x)
+    (x->index uvar-match x)))
 
 ; ----- func ----- ;
 (define test
@@ -201,6 +211,31 @@
       [else
        (begin #f)])))
 
+(define x->index
+  (lambda (x-m x)
+    (match (x-m x)
+      [`(,_ ,idx)
+        (string->number idx)]
+      [else
+        (begin #f)])))
+
 (define sra
   (lambda (x n) (arithmetic-shift x (- n))))
 
+(define all?
+  (lambda ps
+    (lambda (x)
+      (if (null? ps)
+        (begin #t)
+        (and ((car ps) x) ((apply all? (cdr ps)) x))))))
+
+(define any?
+  (lambda ps
+    (lambda (x)
+      (if (null? ps)
+        (begin #f)
+        (or ((car ps) x) ((apply any? (cdr ps)) x))))))
+
+(define symbol-format
+  (lambda (fmt . vals)
+    (string->symbol (apply format fmt vals))))
