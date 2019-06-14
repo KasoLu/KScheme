@@ -5,71 +5,85 @@
 
 (define expose-frame-var
   (lambda (program)
-    (expose-program program)))
+    ($program program)))
 
-(define expose-program
+(define $program
   (lambda (program)
     (match program
-      [`(letrec ([,label* (lambda () ,tail*)] ...) ,tail)
-        (let 
-          ([exp-lambda (lambda (l t) `(,l (lambda () ,t)))]
-           [exp-tail* (map expose-tail tail*)])
-         `(letrec ,(map exp-lambda label* exp-tail*) ,(expose-tail tail)))])))
+      [`(letrec ([,l* (lambda () ,t*)] ...) ,t)
+        (let ([exp-lmd (lambda (l t) `(,l (lambda () ,t)))]
+              [exp-t* (map $tail t*)])
+          `(letrec ,{map exp-lmd l* exp-t*} ,{$tail t}))])))
 
-(define expose-tail
+(define $tail
   (lambda (tail)
     (match tail
-      [`(begin ,effect* ... ,tail)
-       `(begin ,@(map expose-effect effect*) ,(expose-tail tail))]
-      [`(,triv)
-       `(,(expose-triv triv))])))
+      [`(begin ,e* ... ,t)
+       `(begin ,@{map $effect e*} ,{$tail t})]
+      [`(if ,p ,t-1 ,t-2)
+       `(if ,{$pred p} ,{$tail t-1} ,{$tail t-2})]
+      [`(,t)
+       `(,{$triv t})])))
 
-(define expose-effect
+(define $pred
+  (lambda (pred)
+    (match pred
+      [`(true)
+       `(true)]
+      [`(false)
+       `(false)]
+      [`(if ,p-1 ,p-2 ,p-3)
+       `(if ,{$pred p-1} ,{$pred p-2} ,{$pred p-3})]
+      [`(begin ,e* ... ,p)
+       `(begin ,@{map $effect e*} ,{$pred p})]
+      [`(,o ,t-1 ,t-2)
+       `(,o ,{$triv t-1} ,{$triv t-2})])))
+
+(define $effect
   (lambda (effect)
     (match effect
-      [`(set! ,var (,binop ,triv-1 ,triv-2))
-       `(set! ,(expose-var var) (,binop ,(expose-triv triv-1) ,(expose-triv triv-2)))]
-      [`(set! ,var ,triv)
-       `(set! ,(expose-var var) ,(expose-triv triv))])))
+      [`(nop)
+       `(nop)]
+      [`(set! ,l (,o ,t-1 ,t-2))
+       `(set! ,{$loc l} (,o ,{$triv t-1} ,{$triv t-2}))]
+      [`(set! ,l ,t)
+       `(set! ,{$loc l} ,{$triv t})]
+      [`(if ,p ,e-1 ,e-2)
+       `(if ,{$pred p} ,{$effect e-1} ,{$effect e-2})]
+      [`(begin ,e* ... ,e)
+       `(begin ,@{map $effect e*} ,{$effect e})])))
 
-(define expose-triv
+(define $triv
   (lambda (triv)
     (match triv
-      [(? var?)
-       (expose-var triv)]
-      [(? int?)
-       (begin triv)]
-      [(? label?)
+      [(? loc?)
+       ($loc triv)]
+      [\else
        (begin triv)])))
 
-(define expose-var
-  (lambda (var)
-    (match var
-      [(? reg?)
-       (begin var)]
-      [(? frame-var?)
-       (disp-opnd 'rbp (* 8 (frame-var->index var)))])))
+(define $loc
+  (lambda (loc)
+    (match loc
+      [(? fvar?)
+       (disp-opnd 'rbp (* 8 (fvar->index loc)))]
+      [\else
+       (begin loc)])))
 
 ; ----- test ----- ;
-;(test expose-var
-;      'rax 'fv1)
-;(test expose-triv
-;      '10 'main$0)
-;(test expose-effect
-;      '(set! fv1 10) '(set! fv2 (+ fv2 10)))
-;(test expose-tail
-;      '(begin (set! fv1 10) (fv2)) '(fv0))
-;(test expose-program
+;(test $loc
+;      'rax 'fv0 'rbx 'fv1)
+;(test $triv
+;      'rax 'fv2 '10 'main$0)
+;(test $effect
+;      '(nop) '(set! fv3 fv4) '(set! fv5 (+ fv5 fv6))
+;      '(if (true) (set! fv7 fv8) (set! fv9 fv10))
+;      '(begin (set! rax 10) (set! rbx 20)))
+;(test $pred
+;      '(true) '(false) '(> fv0 fv1) '(if (true) (false) (true))
+;      '(begin (set! rax 10) (true)))
+;(test $tail
+;      '(fv0) '(if (true) (fv1) (fv2))
+;      '(begin (set! rax 10) (fv3)))
+;(test $program
 ;      '(letrec ([main$0 (lambda () (fv0))]) (fv1)))
-;(test expose-frame-var
-;      '(letrec 
-;         ([f$1 (lambda ()
-;                 (begin
-;                   (set! fv0 rax)
-;                   (set! rax (+ rax rax))
-;                   (set! rax (+ rax fv0))
-;                   (r15)))])
-;         (begin
-;           (set! rax 17)
-;           (f$1))))
 
