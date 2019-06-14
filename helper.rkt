@@ -136,13 +136,13 @@
 ; ----- struct ----- ;
 (define hash-env:make
   (lambda ()
-    (cons (make-hash) (void))))
+    (cons (make-hash) '())))
 
 (define hash-env:search
   (lambda (env var)
     (let loop ([env env])
       (match env
-        [(? void?)
+        [(? null?)
          (begin #f)]
         [(cons table prev)
          (hash-ref table var (lambda () (loop prev)))]))))
@@ -154,7 +154,7 @@
 (define hash-env:modify!
   (lambda (env var val)
     (match env
-      [(? void?)
+      [(? null?)
        (begin #f)]
       [(cons table prev)
        (hash-set! table var val)])))
