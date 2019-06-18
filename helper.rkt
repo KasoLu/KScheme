@@ -204,6 +204,15 @@
         [(cons (cons e-var (box e-val)) prev)
          (loop prev (cons (func e-var e-val) res*))]))))
 
+(define list-env:fold
+  (lambda (env func)
+    (let loop ([env env] [res* '()])
+      (match env
+        [(? null?)
+         (begin res*)]
+        [(cons (cons e-var (box e-val)) prev)
+         (loop prev (func e-var e-val res*))]))))
+
 ; ----- utils ----- ;
 (define pipe
   (lambda fs
