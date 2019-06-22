@@ -57,7 +57,7 @@
   (lambda (x)
     (any->bool (uvar-match x))))
 
-(struct disp-opnd (reg offset) #:transparent)
+(struct disp-opnd (reg offset) #:prefab)
 
 ; ----- helper ----- ;
 (define label-match
@@ -99,15 +99,19 @@
 
 (define driver
   (let ([build-file "build.s"])
-    (lambda (debug-passes build-passes inputs)
+    (lambda (debug-passes build-passes #:trace [trace #f] inputs)
+      (define (run input)
+        (printf "~a~n" (evalify ((apply pipe debug-passes) input)))
+        (with-output-to-file build-file #:exists 'replace
+          (lambda () ((apply pipe build-passes) input)))
+        (system (format "cc runtime.c ~a && ./a.out" build-file)))
       (for-each 
         (lambda (input)
           (printf "~a~n" input)
-          (with-handlers ([exn:fail? (lambda (exn) (displayln (exn-message exn)))])
-            (printf "~a~n" (evalify ((apply pipe debug-passes) input)))
-            (with-output-to-file build-file #:exists 'replace
-              (lambda () ((apply pipe build-passes) input)))
-            (system (format "cc runtime.c ~a && ./a.out" build-file)))
+          (if trace
+            (run input)
+            (with-handlers ([exn:fail? (lambda (exn) (displayln (exn-message exn)))])
+              (run input)))
           (printf "~n"))
         (begin inputs)))))
 

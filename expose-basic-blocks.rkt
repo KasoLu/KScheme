@@ -1,6 +1,7 @@
 #lang racket
 
 (require "helper.rkt")
+(provide expose-basic-blocks)
 
 (define expose-basic-blocks
   (lambda (program)
@@ -43,7 +44,7 @@
       [`(begin ,e* ... ,p)
         ($effect! `(begin ,@e*) ($pred! p true-cont false-cont))]
       [`(,o ,t-1 ,t-2)
-       `(,{env:label! `(if ,pred ,true-cont ,false-cont)})])))
+       `(,{env:label! `(if ,pred (,{env:label! true-cont}) (,{env:label! false-cont}))})])))
 
 (define $effect!
   (lambda (effect cont)

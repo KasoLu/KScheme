@@ -21,9 +21,9 @@
   (lambda (body env)
     (match body
       [`(locate ([,u* ,l*] ...) ,t)
-        (let ([v-l* (map (curryr $loc env) l*)])
-          (for-each (curryr check-uvar-dup! env) u* v-l*)
-          ($tail t env))]
+        (for-each (curryr $loc env) l*)
+        (for-each (curryr check-uvar-dup! env) u* l*)
+        ($tail t env)]
       [\else
         (check-error 'body body)])))
 
@@ -78,8 +78,10 @@
           ($binop o env)
           ($triv t-1 env)
           ($triv t-2 env)
-          (let ([v~ (if (uvar? v) (env:uvar->loc env v) v)])
-            (when (not (eq? v~ t-1))
+          (let 
+            ([v~ (if (uvar? v) (env:uvar->loc env v) v)]
+             [t-1~ (if (uvar? t-1) (env:uvar->loc env t-1) t-1)])
+            (when (not (eq? v~ t-1~))
               (error '$effect "'~a' != '~a'" v t-1))
             (when (label? t-2)
               (error '$effect "'~a' cannot serve as operand" t-2))
@@ -204,7 +206,7 @@
 
 (define env:uvar->loc
   (lambda (env uvar)
-    (match (hash-env:search env (idx->key (uvar->index uvar)))
+    (match (hash-env:search env (idx->key 'uvar (uvar->index uvar)))
       [(cons uvar loc)
        (begin loc)])))
 

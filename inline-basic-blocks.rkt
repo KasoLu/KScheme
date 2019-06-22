@@ -32,7 +32,7 @@
             (cond
               [(not need-call)
                (begin t-il)]
-              [(call? t-il)
+              [(label-jump? t-il)
                (begin t-il)]
               [\else 
                (begin (env:modify! t t-il) tail)])))])))
@@ -43,7 +43,7 @@
       [`(set! ,_ ,(? label? t))
         (let ([mrb (env:search t)])
           (set-Mrb-refs! mrb -1)
-          ($tail (Mrb-body mrb)))]
+          (env:modify! t ($tail (Mrb-body mrb) #f)))]
       [\else
         (void)])))
 
@@ -124,11 +124,11 @@
   (lambda (mrb)
     (< (Mrb-refs mrb) 0)))
 
-(define call?
+(define label-jump?
   (lambda (tail)
     (match tail
-      [`(,(? triv?)) #t]
-      [\else         #f])))
+      [`(,(? label?)) #t]
+      [\else #f])))
 
 ; ----- test ----- ;
 ;(test inline-basic-blocks

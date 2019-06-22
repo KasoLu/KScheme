@@ -1,6 +1,7 @@
 #lang racket
 
 (require "helper.rkt")
+(provide finalize-locations)
 
 (define finalize-locations
   (lambda (program)
@@ -33,7 +34,7 @@
   (lambda (pred env)
     (match pred
       [`(true)
-       `(ture)]
+       `(true)]
       [`(false)
        `(false)]
       [`(if ,p-1 ,p-2 ,p-3)
