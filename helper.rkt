@@ -23,7 +23,7 @@
 
 (define reg?
   (lambda (x)
-    (memq x '(rax rbx rcx rdx rbp rsi rdi r8 r9 r10 r11 r12 r13 r14 r15))))
+    (set-member? (reg-set) x)))
 
 (define loc?
   (lambda (x)
@@ -58,6 +58,10 @@
     (any->bool (uvar-match x))))
 
 (struct disp-opnd (reg offset) #:prefab)
+
+(define reg-set
+  (let ([reg-set '(rax rbx rcx rdx rbp rsi rdi r8 r9 r10 r11 r12 r13 r14 r15)])
+    (lambda () reg-set)))
 
 ; ----- helper ----- ;
 (define label-match
