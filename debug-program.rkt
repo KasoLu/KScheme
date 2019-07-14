@@ -19,7 +19,7 @@
 (define $body
   (lambda (body)
     (match body
-      [`(locate ([,u* ,l*] ...) ,t)
+      [`(locate ([,u* . ,l*] ...) ,t)
         (let ([dbg-bind* (lambda (u l) `(,u ,l))])
           `(let ,(map dbg-bind* u* (map $var l*)) ,($tail t)))])))
 

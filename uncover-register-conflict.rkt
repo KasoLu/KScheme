@@ -3,6 +3,7 @@
 (require racket/trace)
 (require "helper.rkt")
 (require "test.rkt")
+(provide uncover-register-conflict)
 
 (define uncover-register-conflict
   (lambda (program)
@@ -158,7 +159,8 @@
    ))
 
 ; ----- test ----- ;
-(apply test uncover-register-conflict #:trace #t
-       tests
-       )
+;(apply test uncover-register-conflict #:trace #t
+;       ;tests
+;       (list t)
+;       )
 

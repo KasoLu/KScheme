@@ -36,10 +36,15 @@
         ($pred p env)
         ($tail t-1 env)
         ($tail t-2 env)]
-      [`(,t)
+      [`(,t ,l* ...)
         ($triv t env)
         (when (int? t)
-          (error '$tail "'~a' must not be a int" t))]
+          (error '$tail "'~a' must not be a int" t))
+        (for-each 
+          (lambda (l) 
+            (when (not (loc? l))  
+              (error '$tail "'~a' must be a loc" l))) 
+          (begin l*))]
       [\else
         (check-error 'tail tail)])))
 
@@ -196,12 +201,6 @@
 (define env:extend
   (lambda (env [pairs '()])
     (hash-env:extend env pairs)))
-
-(define env:uvar->loc
-  (lambda (env uvar)
-    (match (hash-env:search env (idx->key 'uvar (uvar->index uvar)))
-      [(cons uvar loc)
-       (begin loc)])))
 
 (define check
   (lambda (tag pred val)

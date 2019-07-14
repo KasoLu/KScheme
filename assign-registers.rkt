@@ -2,6 +2,7 @@
 
 (require racket/trace)
 (require "helper.rkt")
+(provide assign-registers)
 
 (define assign-registers
   (lambda (program)
@@ -47,9 +48,7 @@
 
 (define u/r-map:update!
   (lambda (uvar reg)
-    (hash-set! u/r-map uvar reg)
-    (pretty-display u/r-map)
-    ))
+    (hash-set! u/r-map uvar reg)))
 
 (define u/r-cfl:analyze!
   (lambda (ori-cg)
@@ -69,7 +68,6 @@
        (let loop ([u/r-cfl u/r-cfl] [reg-cfl '()])
          (match u/r-cfl
            [(? null?)
-            (pretty-display reg-cfl)
             (let ([cnd-reg (set-subtract (reg-set) reg-cfl)])
               (if (set-empty? cnd-reg)
                 (error 'u/r-cfl->reg! "'~a' has not enough reg" uvar)
