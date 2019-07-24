@@ -5,51 +5,77 @@
 
 (define generate-x86-64
   (lambda (program)
-    (display boilerplate-start)
-    (program->x86-64 program)
-    (display boilerplate-end)))
-
-(define program->x86-64
-  (lambda (program)
     (match program
-      [`(code ,stmt* ...)
-        (for-each (compose display stmt->x86-64) stmt*)])))
+      [`(code ,s* ...)
+        (display boilerplate-start)
+        (for-each (compose display stmt->x86-64) s*)
+        (display boilerplate-end)])))
 
 (define stmt->x86-64
   (lambda (stmt)
-    (match stmt
-      [`(set! ,var (,binop ,triv-1 ,triv-2))
-        (format "  ~a ~a, ~a\n" (binop->x86-64 binop) (triv->x86-64 triv-2) (var->x86-64 var))]
-      [`(set! ,var ,triv)
-        (if (label? triv)
-          (format "  leaq ~a(%rip), ~a\n" (triv->x86-64 triv) (var->x86-64 var))
-          (format "  movq ~a, ~a\n" (triv->x86-64 triv) (var->x86-64 var)))]
-      [`(jump ,triv)
+    (match stmt 
+      [`(set! ,l-t (,o ,t-1 ,t-2))
+        (format "  ~a ~a, ~a\n" 
+                (binop->x86-64 o) 
+                (triv->x86-64 t-2) 
+                (loc->x86-64 l-t))]
+      [`(set! ,(? reg? l-t) ,(? label? l))
+        (format "  leaq ~a(%rip), ~a\n"
+                (label->x86-64 l)
+                (loc->x86-64 l-t))]
+      [`(set! ,l-t ,t)
+        (format "  movq ~a, ~a\n"
+                (triv->x86-64 t)
+                (loc->x86-64 l-t))]
+      [`(if (,r ,t-1 ,t-2) (jump ,l))
         (format
-          (if (label? triv)
+          "  cmpq ~a, ~a\n  ~a ~a\n"
+          (triv->x86-64 t-2)
+          (triv->x86-64 t-1)
+          (relop->x86-64 r)
+          (label->x86-64 l))]
+      [`(if (not (,r ,t-1 ,t-2)) (jump ,l))
+        (format 
+          "  cmpq ~a, ~a\n  ~a ~a\n"
+          (triv->x86-64 t-2)
+          (triv->x86-64 t-1)
+          (relop->x86-64 (not-relop r))
+          (label->x86-64 l))]
+      [`(jump ,t)
+        (format
+          (if (label? t)
             "  jmp ~a\n"
             "  jmp *~a\n")
-          (triv->x86-64 triv))]
-      [ (? label?)
-        (format "~a:\n" (triv->x86-64 stmt))])))
+          (triv->x86-64 t))]
+      [ (? label? l)
+        (format "~a:\n" (label->x86-64 l))]
+      )))
 
 (define triv->x86-64
   (lambda (triv)
     (match triv
-      [(? var?)
-       (var->x86-64 triv)]
+      [(? loc?)
+       (loc->x86-64 triv)]
       [(? int?)
        (format "$~a" triv)]
       [(? label?)
-       (format "L~a" (label->index triv))])))
+       (label->x86-64 triv)]
+      )))
 
-(define var->x86-64
-  (lambda (var)
-    (match var
+(define loc->x86-64
+  (lambda (loc)
+    (match loc
       [(? reg?)
-       (format "%~a" var)]
-      [(? disp-opnd?)
-       (format "~a(%~a)" (disp-opnd-offset var) (disp-opnd-reg var))])))
+       (format "%~a" loc)]
+      [(disp-opnd reg offset)
+       (format "~a(%~a)" offset reg)]
+      )))
+
+(define label->x86-64
+  (lambda (label)
+    (match (label-match label)
+      [`(,_ ,(app string->number idx))
+        (format "L~a" idx)])))
 
 (define binop->x86-64
   (lambda (binop)
@@ -61,7 +87,26 @@
       ['logor "orq"]
       ['sra "sarq"])))
 
-; ----- helper ----- ;
+(define relop->x86-64
+  (lambda (relop)
+    (match relop
+      ['=  "je"]
+      ['>  "jg"]
+      ['<  "jl"]
+      ['!= "jne"]
+      ['>= "jge"]
+      ['<= "jle"])))
+
+(define not-relop
+  (lambda (relop)
+    (match relop
+      ['=  '!=]
+      ['>  '<=]
+      ['<  '>=]
+      ['!= '=]
+      ['>= '<]
+      ['<= '>])))
+
 (define boilerplate-start "
   .globl _scheme_entry
 
@@ -87,23 +132,63 @@ _scheme_exit:
   ret
 ")
 
-; ----- test ----- ;
+; ----- test ------ ;
 ;(test generate-x86-64
 ;      '(code
-;         (jump r15)
-;         main$0
-;         (set! rax 10)
-;         (jump main$0)
-;         main$1
-;         (set! rbx 20)
-;         (jump main$1)))
+;         (set! r8 3) 
+;         (set! r9 10) 
+;         f$1 
+;         (if (not (= r8 1)) (jump a$9)) 
+;         c$8 
+;         (jump c$6) 
+;         a$9 
+;         (if (not (> r9 1000)) (jump a$7)) 
+;         c$6 
+;         (set! rax r9) 
+;         (jump r15) 
+;         a$7 
+;         (set! r9 (* r9 2)) 
+;         (set! rax r8) 
+;         (set! rax (logand rax 1)) 
+;         (if (not (= rax 0)) (jump a$4)) 
+;         c$3 
+;         (set! r9 (+ r9 1)) 
+;         (jump j$5) 
+;         a$4 
+;         j$5 
+;         (set! r8 (sra r8 1)) 
+;         (jump f$1)))
+
 ;(test generate-x86-64
-;      `(code
-;         (set! rax 17)
-;         (jump f$1)
+;      '(code
+;         (set! r8 3)
+;         (set! r9 10)
 ;         f$1
-;         (set! ,(disp-opnd 'rbp 0) rax)
-;         (set! rax (+ rax rax))
-;         (set! rax (+ rax ,(disp-opnd 'rbp 0)))
+;         (if (= r8 1) (jump l$1015))
+;         l$1016
+;         (if (not (> r9 1000)) (jump l$1012))
+;         l$1015
+;         (set! rax r9)
+;         (jump r15)
+;         l$1012
+;         (set! r9 (* r9 2))
+;         (set! rax r8)
+;         (set! rax (logand rax 1))
+;         (if (not (= rax 0)) (jump l$1003))
+;         l$1007
+;         (set! r9 (+ r9 1))
+;         l$1003
+;         (set! r8 (sra r8 1))
+;         (jump f$1)))
+;(test generate-x86-64 #:trace #t
+;      '(code
+;         l$104
+;         (set! rax 5)
+;         l$103
+;         (set! rcx 10)
+;         l$102
+;         (if (< rax rcx) (jump r15))
+;         l$101
+;         (set! rax rcx)
 ;         (jump r15)))
 
