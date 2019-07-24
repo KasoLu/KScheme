@@ -23,7 +23,7 @@
 
 (define reg?
   (lambda (x)
-    (memq x '(rax rcx rdx rbx rbp rsi rdi r8 r9 r10 r11 r12 r13 r14 r15))))
+    (set-member? (reg-set) x)))
 
 (define loc?
   (lambda (x)
@@ -58,6 +58,10 @@
     (any->bool (uvar-match x))))
 
 (struct disp-opnd (reg offset) #:prefab)
+
+(define reg-set
+  (let ([reg-set '(rax rbx rcx rdx rbp rsi rdi r8 r9 r10 r11 r12 r13 r14 r15)])
+    (lambda () reg-set)))
 
 ; ----- helper ----- ;
 (define label-match
@@ -263,3 +267,44 @@
 (define symbol-format
   (lambda (fmt . vals)
     (string->symbol (apply format fmt vals))))
+
+(define-syntax-rule
+  (hook ([prev prev-lmd] [post post-lmd]) expr ...)
+  (begin
+    (prev-lmd) 
+    (let ([res (begin expr ...)])
+      (post-lmd)
+      (begin res))))
+
+(define-syntax (bundle stx)
+  (define concat
+    (lambda (tag name*)
+      (map
+        (lambda (name)
+          (datum->syntax
+            (begin tag)
+            (string->symbol 
+              (string-append
+                (symbol->string (syntax-e tag)) ":" (symbol->string (syntax-e name))))
+            (begin tag)))
+        (syntax-e name*))))
+  (define make-define
+    (lambda (name* args* expr*)
+      (map 
+        (lambda (name args expr) #`(define #,name (lambda #,args #,@expr)))
+        (begin name*)
+        (syntax-e args*)
+        (syntax-e expr*))))
+  (syntax-case stx ()
+    [(_ name bind* ([func* args* expr* ...] ...))
+     (identifier? #'name)
+     (let* 
+       ([bind-val* #'bind*]
+        [name-func* (concat #'name #'(func* ...))]
+        [func-def* (make-define name-func* #'(args* ...) #'((expr* ...) ...))])
+       #`(define-values
+           (#,@name-func*)
+           (let #,bind-val*
+             #,@func-def*
+             (values #,@name-func*))))]))
+

@@ -20,9 +20,8 @@
 (define $body
   (lambda (body env)
     (match body
-      [`(locate ([,u* ,l*] ...) ,t)
-        (for-each (curryr $loc env) l*)
-        (for-each (curryr check-uvar-dup! env) u* l*)
+      [`(locals (,u* ...) ,t)
+        (for-each (curryr check-uvar-dup! env) u*)
         ($tail t env)]
       [\else
         (check-error 'body body)])))
@@ -37,10 +36,15 @@
         ($pred p env)
         ($tail t-1 env)
         ($tail t-2 env)]
-      [`(,t)
+      [`(,t ,l* ...)
         ($triv t env)
         (when (int? t)
-          (error '$tail "'~a' must not be a int" t))]
+          (error '$tail "'~a' must not be a int" t))
+        (for-each 
+          (lambda (l) 
+            (when (not (loc? l))  
+              (error '$tail "'~a' must be a loc" l))) 
+          (begin l*))]
       [\else
         (check-error 'tail tail)])))
 
@@ -63,7 +67,9 @@
         ($triv t-1 env)
         ($triv t-2 env)
         (when (or (label? t-1) (label? t-2))
-          (error '$pred "'~a'/'~a' cannot be a label" t-1 t-2))]
+          (error '$pred "'~a'/'~a' cannot be a label" t-1 t-2))
+        (when (or (int32~64? t-1) (int32~64? t-2))
+          (error '$pred "'~a'/'~a' cannot big than a int32" t-1 t-2))]
       [\else
         (check-error 'pred pred)])))
 
@@ -78,27 +84,19 @@
           ($binop o env)
           ($triv t-1 env)
           ($triv t-2 env)
-          (let 
-            ([v~ (if (uvar? v) (env:uvar->loc env v) v)]
-             [t-1~ (if (uvar? t-1) (env:uvar->loc env t-1) t-1)])
-            (when (not (eq? v~ t-1~))
-              (error '$effect "'~a' != '~a'" v t-1))
-            (when (label? t-2)
-              (error '$effect "'~a' cannot serve as operand" t-2))
-            (when (and (eq? o '*) (not (reg? v~))) 
-              (error '$effect "'~a' must be a register" v))
-            (when (and (eq? o 'sra) (not (k? t-2))) 
-              (error '$effect "'~a' not in [0, 63]" t-2))
-            (when (int32~64? t-2)
-              (error '$effect "'~a' must be a int32" t-2)))]
+          (when (not (eq? v t-1))
+            (error '$effect "'~a' != '~a'" v t-1))
+          (when (label? t-2)
+            (error '$effect "'~a' cannot serve as operand" t-2))
+          (when (and (eq? o 'sra) (not (k? t-2))) 
+            (error '$effect "'~a' not in [0, 63]" t-2))
+          (when (int32~64? t-2)
+            (error '$effect "'~a' must be a int32" t-2))]
         [`(set! ,v ,t)
           ($var v env)
           ($triv t env)
-          (let ([v~ (if (uvar? v) (env:uvar->loc env v) v)])
-            (when (and ((any? label? int32~64?) t) (not (reg? v~)))
-              (error '$effect "'~a' must be a reg" v))
-            (when (and (fvar? v~) (fvar? t))
-              (error '$effect "'~a' and '~a' cannot be both fvar" v t)))]
+          (when (and (fvar? v) (fvar? t))
+            (error '$effect "'~a' and '~a' cannot be both fvar" v t))]
         [`(if ,p ,e-1 ,e-2)
           ($pred p env)
           ($effect e-1 env)
@@ -158,16 +156,16 @@
            (begin #f)])))))
 
 (define check-uvar-dup!
-  (lambda (uvar loc env)
-    (check-dup! 'uvar env uvar->index uvar (cons uvar loc))))
+  (lambda (uvar env)
+    (check-dup! 'uvar env uvar->index uvar uvar)))
 
 (define check-uvar-ref
   (lambda (uvar env)
     (check-ref 'uvar env uvar->index uvar 
       (lambda (found)
         (match found
-          [(cons (? (curry eq? uvar)) loc)
-           (begin loc)]
+          [(? (curry eq? uvar))
+           (begin uvar)]
           [\else
            (begin #f)])))))
 
@@ -204,12 +202,6 @@
   (lambda (env [pairs '()])
     (hash-env:extend env pairs)))
 
-(define env:uvar->loc
-  (lambda (env uvar)
-    (match (hash-env:search env (idx->key 'uvar (uvar->index uvar)))
-      [(cons uvar loc)
-       (begin loc)])))
-
 (define check
   (lambda (tag pred val)
     (when (not (pred val)) 
@@ -243,19 +235,19 @@
 ;      '(begins (nop) (rax)) '(begin (abc) (rax)) '(begin (nop) (abc))
 ;      '(rax) '(if (true) (rax) (fv0)) '(begin (nop) (rax)))
 ;(test (env-wrap $body)
-;      '() '(set! () (rax)) '(locate ([rbx rax]) (rbx)) '(locate ([main.0 10]) (rax))
-;      '(locate ([main.0 rax] [main.1 rbx]) 10) '(locate () (main.0))
-;      '(locate ([main.0 rax]) (main.0)) '(locate ([main.0 rax] [main.1 rbx]) (main.1)))
+;      '() '(set! () (rax)) '(locate (main.0) (rbx)) '(locals ([main.0 10]) (rax))
+;      '(locals (main.0 main.1) 10) '(locals () (main.0))
+;      '(locals (main.0) (main.0)) '(locals (main.0 main.1) (main.1)))
 ;(test (env-wrap $program!)
 ;      '() '(set! () (locate () (rax))) 
-;      '(letrec ([main$01 (lambda () (locate () (rax)))]) (locate () (rax)))
-;      '(letrec ([main$0 (set! () (locate () (rax)))]) (locate () (rax)))
-;      '(letrec ([main$0 (lambda () (set! rax 10))]) (locate () (rax)))
-;      '(letrec ([main$0 (lambda () (locate () (rax)))] (set! rax 10)))
-;      '(letrec ([main$0 (lambda () (locate ([main.0 rax] [main.0 rbx]) (main.0)))])
-;         (locate () (rax)))
-;      '(letrec () (locate () (rax)))
-;      '(letrec ([main$0 (lambda () (locate () (rax)))]) (locate () (rax)))
-;      '(letrec ([main$0 (lambda () (locate ([main.0 rax]) (main.0)))]) 
-;         (locate ([main.0 rbx]) (main.0))))
+;      '(letrec ([main$01 (lambda () (locals () (rax)))]) (locals () (rax)))
+;      '(letrec ([main$0 (set! () (locals () (rax)))]) (locals () (rax)))
+;      '(letrec ([main$0 (lambda () (set! rax 10))]) (locals () (rax)))
+;      '(letrec ([main$0 (lambda () (locals () (rax)))] (set! rax 10)))
+;      '(letrec ([main$0 (lambda () (locals (main.0 main.0) (main.0)))])
+;         (locals () (rax)))
+;      '(letrec () (locals () (rax)))
+;      '(letrec ([main$0 (lambda () (locals () (rax)))]) (locals () (rax)))
+;      '(letrec ([main$0 (lambda () (locals (main.0) (main.0)))]) 
+;         (locals (main.0) (main.0))))
 

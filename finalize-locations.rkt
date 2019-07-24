@@ -17,7 +17,7 @@
 (define $body
   (lambda (body env)
     (match body
-      [`(locate ([,u* ,l*] ...) ,t)
+      [`(locate ([,u* . ,l*] ...) ,t)
         ($tail t (env:extend env (map cons u* l*)))])))
 
 (define $tail
